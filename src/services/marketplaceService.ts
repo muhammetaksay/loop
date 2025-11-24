@@ -39,6 +39,7 @@ export interface TradeOffer {
     offeredItemId: string;
     offeredItemImage: string;
     offeredItemCategory: string;
+    extraCash?: number;
     status: 'pending' | 'accepted' | 'rejected';
     createdAt: Date;
 }
@@ -71,8 +72,9 @@ export const getMarketplaceListings = async (
 ): Promise<MarketplaceListing[]> => {
     try {
         const q = query(
-            collection(db, 'marketplace'),
+            collection(db, 'wardrobe'), // Query from wardrobe collection instead of marketplace
             where('userId', '!=', userId),
+            where('isTradeable', '==', true),
             orderBy('userId'),
             orderBy('createdAt', 'desc'),
             limit(limitCount)
@@ -104,12 +106,13 @@ export const createTradeOffer = async (
     offer: Omit<TradeOffer, 'id' | 'createdAt' | 'status'>
 ): Promise<string> => {
     try {
+        console.log('Creating trade offer with data:', JSON.stringify(offer, null, 2));
         const docRef = await addDoc(collection(db, 'tradeOffers'), {
             ...offer,
             status: 'pending',
             createdAt: Timestamp.now(),
         });
-
+        console.log('Trade offer created with ID:', docRef.id);
         return docRef.id;
     } catch (error: any) {
         console.error('Create trade offer error:', error);
@@ -122,13 +125,16 @@ export const createTradeOffer = async (
  */
 export const getIncomingOffers = async (userId: string): Promise<TradeOffer[]> => {
     try {
+        console.log('Fetching incoming offers for user:', userId);
         const q = query(
             collection(db, 'tradeOffers'),
-            where('toUserId', '==', userId),
-            orderBy('createdAt', 'desc')
+            where('toUserId', '==', userId)
+            // orderBy('createdAt', 'desc')
         );
 
         const querySnapshot = await getDocs(q);
+        console.log('Incoming offers count:', querySnapshot.size);
+
         const offers: TradeOffer[] = [];
 
         querySnapshot.forEach((doc) => {
@@ -152,13 +158,16 @@ export const getIncomingOffers = async (userId: string): Promise<TradeOffer[]> =
  */
 export const getOutgoingOffers = async (userId: string): Promise<TradeOffer[]> => {
     try {
+        console.log('Fetching outgoing offers for user:', userId);
         const q = query(
             collection(db, 'tradeOffers'),
-            where('fromUserId', '==', userId),
-            orderBy('createdAt', 'desc')
+            where('fromUserId', '==', userId)
+            // orderBy('createdAt', 'desc')
         );
 
         const querySnapshot = await getDocs(q);
+        console.log('Outgoing offers count:', querySnapshot.size);
+
         const offers: TradeOffer[] = [];
 
         querySnapshot.forEach((doc) => {

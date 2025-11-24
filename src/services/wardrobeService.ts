@@ -22,6 +22,9 @@ export interface WardrobeItem {
     season?: string;
     brand?: string;
     notes?: string;
+    isTradeable?: boolean;
+    tradePrice?: number;
+    tradeWants?: string;
     createdAt: Date;
 }
 

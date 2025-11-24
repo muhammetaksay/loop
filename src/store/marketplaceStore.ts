@@ -60,7 +60,54 @@ export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
         try {
             const incoming = await getIncomingOffers(userId);
             const outgoing = await getOutgoingOffers(userId);
-            set({ tradeOffers: [...incoming, ...outgoing] as TradeOffer[] });
+            const allOffers = [...incoming, ...outgoing];
+
+            // Fetch listing details for each offer
+            const offersWithDetails = await Promise.all(
+                allOffers.map(async (offer) => {
+                    try {
+                        // We need to fetch the listing from 'wardrobe' collection since that's where items are
+                        // But wait, getMarketplaceListings queries 'wardrobe'. 
+                        // Let's assume we can fetch the document from 'wardrobe' using listingId (which is actually the item ID in this context?)
+                        // Wait, in createListing we add to 'marketplace' collection? 
+                        // No, getMarketplaceListings queries 'wardrobe'.
+                        // Let's check createListing in marketplaceService.ts... 
+                        // It adds to 'marketplace'. 
+                        // BUT getMarketplaceListings queries 'wardrobe'. This is inconsistent.
+                        // Let's look at getMarketplaceListings again.
+                        // It queries 'wardrobe'.
+                        // So listingId in TradeOffer likely refers to the document ID in 'wardrobe' (or 'marketplace'?).
+                        // In makeOffer (store), we use listing.id. 
+                        // If getMarketplaceListings returns docs from 'wardrobe', then listing.id is a wardrobe doc ID.
+                        // So we should fetch from 'wardrobe'.
+
+                        // To be safe and quick, let's try to fetch from 'wardrobe' first.
+                        const { doc, getDoc } = require('firebase/firestore');
+                        const { db } = require('../services/firebaseService');
+
+                        const listingRef = doc(db, 'wardrobe', offer.listingId);
+                        const listingSnap = await getDoc(listingRef);
+
+                        if (listingSnap.exists()) {
+                            const data = listingSnap.data();
+                            return {
+                                ...offer,
+                                listing: {
+                                    id: listingSnap.id,
+                                    ...data,
+                                    imageUrl: data.imageUrl || data.image, // Handle potential naming diff
+                                } as MarketplaceListing
+                            };
+                        }
+                        return offer;
+                    } catch (e) {
+                        console.log('Error fetching listing details for offer:', e);
+                        return offer;
+                    }
+                })
+            );
+
+            set({ tradeOffers: offersWithDetails as TradeOffer[] });
         } catch (error) {
             console.error('Error fetching offers:', error);
         } finally {
@@ -81,13 +128,13 @@ export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
                 offeredItemId: offeredItem.id,
                 offeredItemImage: offeredItem.imageUrl || offeredItem.image,
                 offeredItemCategory: offeredItem.category,
+                extraCash: offeredItem.extraCash,
             };
 
             const offerId = await createTradeOffer(offerData);
 
-            // Optimistic update or re-fetch could be done here
-            // For now, we just log
-            console.log('Offer created with ID:', offerId);
+            // Refresh offers to show the new outgoing offer
+            await get().fetchOffers();
         } catch (error) {
             console.error('Error making offer:', error);
             throw error;

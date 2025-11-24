@@ -4,6 +4,7 @@ import {
   addWardrobeItem,
   deleteWardrobeItem,
   getUserWardrobe,
+  updateWardrobeItem,
   uploadImage,
   WardrobeItem as ServiceWardrobeItem,
 } from '../services/wardrobeService';
@@ -23,6 +24,11 @@ interface WardrobeState {
   ) => Promise<{ success: boolean; message?: string }>;
 
   removeItem: (id: string) => Promise<void>;
+  updateItem: (
+    id: string,
+    updates: Partial<WardrobeItem>,
+    newImageUri?: string
+  ) => Promise<{ success: boolean; message?: string }>;
 }
 
 const FREE_TIER_LIMIT = 20;
@@ -97,6 +103,43 @@ export const useWardrobeStore = create<WardrobeState>((set, get) => ({
       }));
     } catch (error) {
       console.error('Error removing item:', error);
+    }
+  },
+
+  updateItem: async (id, updates, newImageUri) => {
+    const userId = auth.currentUser?.uid;
+    if (!userId) return { success: false, message: 'User not logged in' };
+
+    set({ loading: true });
+    try {
+      let imageUrl = updates.imageUrl;
+
+      // If there's a new image, upload it
+      if (newImageUri) {
+        imageUrl = await uploadImage(newImageUri, userId);
+      }
+
+      const finalUpdates = { ...updates };
+      if (imageUrl) {
+        finalUpdates.imageUrl = imageUrl;
+      }
+
+      // Update in Firestore
+      await updateWardrobeItem(id, finalUpdates);
+
+      // Update local state
+      set((state) => ({
+        items: state.items.map((item) =>
+          item.id === id ? { ...item, ...finalUpdates } : item
+        ),
+      }));
+
+      return { success: true, message: 'Ürün güncellendi' };
+    } catch (error: any) {
+      console.error('Error updating item:', error);
+      return { success: false, message: error.message || 'Ürün güncellenemedi' };
+    } finally {
+      set({ loading: false });
     }
   },
 }));

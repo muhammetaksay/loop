@@ -12,7 +12,7 @@ const genAI = new GoogleGenerativeAI(ENV.GEMINI_API_KEY);
  */
 export const analyzeClothingImage = async (imageBase64: string) => {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
         const prompt = `Analyze this clothing item image and provide:
 1. Category (e.g., T-Shirt, Jeans, Dress, Jacket, Shoes)
@@ -73,7 +73,7 @@ export const generateOutfitRecommendation = async (
     gender?: string
 ) => {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
 
         const itemsList = wardrobeItems
             .map((item) => `- ${item.category} (${item.color})`)
@@ -132,7 +132,7 @@ Yanıtı şu JSON formatında ver:
  */
 export const getStylingTips = async (item: any) => {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
         const prompt = `Provide 3-5 styling tips for a ${item.color} ${item.category}. 
 Include suggestions for:

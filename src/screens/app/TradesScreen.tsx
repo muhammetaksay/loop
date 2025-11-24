@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Check, X, ArrowRightLeft } from 'lucide-react-native';
 import { useMarketplaceStore } from '../../store/marketplaceStore';
 import { useUserStore } from '../../store/userStore';
+import { auth } from '../../services/firebaseService';
 
 export default function TradesScreen() {
     const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing'>('incoming');
@@ -27,11 +28,16 @@ export default function TradesScreen() {
         await fetchOffers();
     };
 
+    const currentUserId = auth.currentUser?.uid;
+
+    console.log('TradesScreen - Current User ID:', currentUserId);
+    console.log('TradesScreen - Trade Offers Count:', tradeOffers.length);
+
     const incomingOffers = tradeOffers.filter(
-        (offer) => offer.toUserId === user.id
+        (offer) => offer.toUserId === currentUserId
     );
     const outgoingOffers = tradeOffers.filter(
-        (offer) => offer.fromUserId === user.id
+        (offer) => offer.fromUserId === currentUserId
     );
 
     const displayOffers = activeTab === 'incoming' ? incomingOffers : outgoingOffers;
@@ -52,6 +58,13 @@ export default function TradesScreen() {
                     <Text className="mt-2 text-center text-xs font-medium text-gray-900" numberOfLines={1}>
                         {item.offeredItemCategory}
                     </Text>
+                    {item.extraCash && item.extraCash > 0 && (
+                        <View className="mt-1 rounded-full bg-green-100 px-2 py-0.5">
+                            <Text className="text-[10px] font-bold text-green-700">
+                                +{item.extraCash} TL
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
                 {/* Arrow */}
@@ -107,20 +120,20 @@ export default function TradesScreen() {
                 ) : (
                     <View
                         className={`flex-row items-center justify-center rounded-lg py-2 ${item.status === 'accepted'
-                                ? 'bg-green-100'
-                                : item.status === 'rejected'
-                                    ? 'bg-red-100'
-                                    : 'bg-yellow-100'
+                            ? 'bg-green-100'
+                            : item.status === 'rejected'
+                                ? 'bg-red-100'
+                                : 'bg-yellow-100'
                             }`}
                     >
                         {item.status === 'accepted' && <Check color="#15803D" size={16} className="mr-2" />}
                         {item.status === 'rejected' && <X color="#B91C1C" size={16} className="mr-2" />}
                         <Text
                             className={`text-sm font-bold ${item.status === 'accepted'
-                                    ? 'text-green-800'
-                                    : item.status === 'rejected'
-                                        ? 'text-red-800'
-                                        : 'text-yellow-800'
+                                ? 'text-green-800'
+                                : item.status === 'rejected'
+                                    ? 'text-red-800'
+                                    : 'text-yellow-800'
                                 }`}
                         >
                             {item.status === 'accepted'
