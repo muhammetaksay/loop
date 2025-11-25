@@ -10,12 +10,15 @@ import {
     RefreshControl,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Check, X, ArrowRightLeft } from 'lucide-react-native';
+import { Check, X, ArrowRightLeft, MessageCircle } from 'lucide-react-native';
 import { useMarketplaceStore } from '../../store/marketplaceStore';
 import { useUserStore } from '../../store/userStore';
+import { useChatStore } from '../../store/chatStore';
 import { auth } from '../../services/firebaseService';
+import { useNavigation } from '@react-navigation/native';
 
 export default function TradesScreen() {
+    const navigation = useNavigation<any>();
     const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing'>('incoming');
     const { tradeOffers, fetchOffers, respondToOffer, loading } = useMarketplaceStore();
     const user = useUserStore((state) => state.user);
@@ -108,7 +111,14 @@ export default function TradesScreen() {
                             </View>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            onPress={() => respondToOffer(item.id, true)}
+                            onPress={() => respondToOffer(
+                                item.id,
+                                true,
+                                item.listingId,
+                                item.fromUserId,
+                                item.fromUserName,
+                                '' // Avatar placeholder
+                            )}
                             className="flex-1 items-center rounded-lg bg-blue-600 py-2 shadow-sm"
                         >
                             <View className="flex-row items-center gap-1">
@@ -146,9 +156,47 @@ export default function TradesScreen() {
                 )}
 
                 {item.status === 'accepted' && (
-                    <Text className="mt-2 text-center text-xs text-green-600">
-                        İletişime geçmek için mesajlar bölümünü kullanın.
-                    </Text>
+                    <TouchableOpacity
+                        onPress={async () => {
+                            // Start chat or navigate to existing one
+                            // We can use the chatStore to start/get chat
+                            // But for simplicity, let's just navigate to ChatList or try to open specific chat
+                            // Better: use startChat from chatStore
+                            const { startChat } = useChatStore.getState();
+                            const otherId = activeTab === 'incoming' ? item.fromUserId : item.toUserId;
+                            const otherName = activeTab === 'incoming' ? item.fromUserName : 'User'; // We might need to fetch name for outgoing
+                            // For outgoing, we don't store toUserName in TradeOffer? 
+                            // We store toUserId.
+                            // Let's assume for now we only support messaging from the one who accepted (incoming).
+                            // Or we can just navigate to ChatList.
+
+                            // Actually, if I accepted, I want to message the other person.
+                            if (activeTab === 'incoming') {
+                                try {
+                                    const chatId = await startChat(item.fromUserId, item.fromUserName, '', item.listingId);
+                                    navigation.navigate('Chat', { chatId, otherUserName: item.fromUserName });
+                                } catch (e) {
+                                    console.error(e);
+                                }
+                            } else {
+                                // If I am the one who offered, and it's accepted, I want to message the owner.
+                                // But I don't have owner's name/avatar easily here unless I fetch listing.
+                                // Listing details are in item.listing (populated in store).
+                                if (item.listing) {
+                                    try {
+                                        const chatId = await startChat(item.listing.userId, item.listing.userName, item.listing.userAvatar, item.listingId);
+                                        navigation.navigate('Chat', { chatId, otherUserName: item.listing.userName });
+                                    } catch (e) {
+                                        console.error(e);
+                                    }
+                                }
+                            }
+                        }}
+                        className="mt-3 flex-row items-center justify-center rounded-lg bg-blue-600 py-2"
+                    >
+                        <MessageCircle color="white" size={16} />
+                        <Text className="ml-2 font-medium text-white">Mesaj Gönder</Text>
+                    </TouchableOpacity>
                 )}
             </View>
         </View>

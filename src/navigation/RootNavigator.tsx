@@ -10,6 +10,7 @@ import OutfitScreen from '../screens/app/OutfitScreen';
 import ListingDetailScreen from '../screens/app/ListingDetailScreen';
 import TradesScreen from '../screens/app/TradesScreen';
 import ChatScreen from '../screens/app/ChatScreen';
+import PublicProfileScreen from '../screens/app/PublicProfileScreen';
 import SettingsScreen from '../screens/app/SettingsScreen';
 import PremiumScreen from '../screens/app/PremiumScreen';
 
@@ -34,6 +35,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ListingDetail" component={ListingDetailScreen} />
         <Stack.Screen name="Trades" component={TradesScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
+        <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Premium" component={PremiumScreen} />
       </Stack.Navigator>

@@ -1,164 +1,185 @@
-import { useNavigation, useRoute } from '@react-navigation/native';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
     View,
     Text,
-    SafeAreaView,
     FlatList,
     TextInput,
     TouchableOpacity,
     KeyboardAvoidingView,
     Platform,
-    ActivityIndicator,
+    StyleSheet,
+    SafeAreaView,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { ArrowLeft, Send } from 'lucide-react-native';
 import { useChatStore } from '../../store/chatStore';
-import { auth } from '../../services/firebaseService';
+import { useUserStore } from '../../store/userStore';
+import { format } from 'date-fns';
+import { tr } from 'date-fns/locale';
 
 export default function ChatScreen() {
-    const navigation = useNavigation<any>();
     const route = useRoute<any>();
-    const { conversation } = route.params || {};
-
+    const navigation = useNavigation();
+    const { chatId, otherUserName } = route.params;
+    const { currentMessages, openChat, closeChat, sendChatMessage } = useChatStore();
+    const { user } = useUserStore();
     const [inputText, setInputText] = useState('');
     const flatListRef = useRef<FlatList>(null);
 
-    const { messages: messagesMap, sendMessage, fetchMessages, subscribeToConversation, loading } = useChatStore();
-    const messages = messagesMap[conversation.id] || [];
-
     useEffect(() => {
-        // Initial fetch
-        fetchMessages(conversation.id);
-
-        // Subscribe to real-time updates
-        const unsubscribe = subscribeToConversation(conversation.id);
-
-        return () => {
-            unsubscribe();
-        };
-    }, [conversation.id]);
-
-    useEffect(() => {
-        // Auto-scroll to bottom when messages change
-        if (messages.length > 0) {
-            setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-            }, 100);
-        }
-    }, [messages]);
+        openChat(chatId);
+        return () => closeChat();
+    }, [chatId]);
 
     const handleSend = async () => {
-        if (inputText.trim()) {
-            const text = inputText.trim();
-            setInputText('');
-            // conversation.userId is the OTHER user's ID
-            await sendMessage(conversation.id, text, conversation.userId);
-        }
+        if (!inputText.trim()) return;
+        const text = inputText.trim();
+        setInputText('');
+        await sendChatMessage(text);
     };
 
     const renderMessage = ({ item }: { item: any }) => {
-        const currentUserId = auth.currentUser?.uid;
-        const isOwnMessage = item.senderId === currentUserId;
-
+        const isMe = item.senderId === user.id;
         return (
             <View
-                className={`mb-3 flex-row ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                style={[
+                    styles.messageBubble,
+                    isMe ? styles.myMessage : styles.theirMessage,
+                ]}
             >
-                <View
-                    className={`max-w-[75%] rounded-2xl px-4 py-3 ${isOwnMessage ? 'bg-blue-600' : 'bg-gray-100'
-                        }`}
-                >
-                    <Text
-                        className={`text-base ${isOwnMessage ? 'text-white' : 'text-gray-900'}`}
-                    >
-                        {item.text}
-                    </Text>
-                    <Text
-                        className={`mt-1 text-xs ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'
-                            }`}
-                    >
-                        {item.timestamp ? new Date(item.timestamp).toLocaleTimeString('tr-TR', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                        }) : ''}
-                    </Text>
-                </View>
+                <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText]}>
+                    {item.text}
+                </Text>
+                <Text style={[styles.messageTime, isMe ? styles.myMessageTime : styles.theirMessageTime]}>
+                    {item.createdAt ? format(item.createdAt, 'HH:mm', { locale: tr }) : ''}
+                </Text>
             </View>
         );
     };
 
     return (
-        <SafeAreaView className="flex-1 bg-white">
-            <StatusBar style="dark" />
+        <SafeAreaView style={styles.container}>
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                    <ArrowLeft color="#000" size={24} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>{otherUserName}</Text>
+            </View>
+
+            <FlatList
+                ref={flatListRef}
+                data={currentMessages}
+                renderItem={renderMessage}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.messageList}
+                inverted
+            />
+
             <KeyboardAvoidingView
-                className="flex-1"
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
             >
-                {/* Header */}
-                <View className="flex-row items-center border-b border-gray-100 px-4 py-3">
-                    <TouchableOpacity
-                        onPress={() => navigation.goBack()}
-                        className="mr-3 rounded-full bg-gray-100 p-2"
-                    >
-                        <ArrowLeft color="#374151" size={20} />
-                    </TouchableOpacity>
-
-                    <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-blue-100">
-                        <Text className="text-base font-bold text-blue-600">
-                            {conversation.userName ? conversation.userName.charAt(0).toUpperCase() : '?'}
-                        </Text>
-                    </View>
-
-                    <Text className="text-lg font-semibold text-gray-900">
-                        {conversation.userName || 'Kullanıcı'}
-                    </Text>
-                </View>
-
-                {/* Messages */}
-                <FlatList
-                    ref={flatListRef}
-                    data={messages}
-                    renderItem={renderMessage}
-                    keyExtractor={(item) => item.id}
-                    contentContainerStyle={{ padding: 16 }}
-                    onContentSizeChange={() =>
-                        flatListRef.current?.scrollToEnd({ animated: true })
-                    }
-                    ListEmptyComponent={
-                        loading ? (
-                            <ActivityIndicator className="mt-4" color="#2563EB" />
-                        ) : (
-                            <Text className="text-center text-gray-500 mt-4">Henüz mesaj yok.</Text>
-                        )
-                    }
-                />
-
-                {/* Input */}
-                <View className="flex-row items-center border-t border-gray-100 px-4 py-3">
+                <View style={styles.inputContainer}>
                     <TextInput
+                        style={styles.input}
+                        placeholder="Mesaj yazın..."
                         value={inputText}
                         onChangeText={setInputText}
-                        placeholder="Mesaj yazın..."
-                        className="mr-3 flex-1 rounded-full bg-gray-100 px-4 py-3 text-base"
                         multiline
-                        maxLength={500}
                     />
-                    <TouchableOpacity
-                        onPress={handleSend}
-                        disabled={!inputText.trim()}
-                        className={`h-12 w-12 items-center justify-center rounded-full ${inputText.trim() ? 'bg-blue-600' : 'bg-gray-200'
-                            }`}
-                    >
-                        <Send
-                            color={inputText.trim() ? 'white' : '#9CA3AF'}
-                            size={20}
-                            fill={inputText.trim() ? 'white' : '#9CA3AF'}
-                        />
+                    <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
+                        <Send color="#fff" size={20} />
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#fff',
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+        backgroundColor: '#fff',
+    },
+    backButton: {
+        marginRight: 15,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#1a1a1a',
+    },
+    messageList: {
+        paddingHorizontal: 15,
+        paddingVertical: 20,
+    },
+    messageBubble: {
+        maxWidth: '80%',
+        padding: 12,
+        borderRadius: 20,
+        marginBottom: 10,
+    },
+    myMessage: {
+        alignSelf: 'flex-end',
+        backgroundColor: '#007AFF',
+        borderBottomRightRadius: 4,
+    },
+    theirMessage: {
+        alignSelf: 'flex-start',
+        backgroundColor: '#f0f0f0',
+        borderBottomLeftRadius: 4,
+    },
+    messageText: {
+        fontSize: 16,
+    },
+    myMessageText: {
+        color: '#fff',
+    },
+    theirMessageText: {
+        color: '#1a1a1a',
+    },
+    messageTime: {
+        fontSize: 10,
+        marginTop: 4,
+        alignSelf: 'flex-end',
+    },
+    myMessageTime: {
+        color: 'rgba(255,255,255,0.7)',
+    },
+    theirMessageTime: {
+        color: '#999',
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        padding: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+        backgroundColor: '#fff',
+        alignItems: 'center',
+    },
+    input: {
+        flex: 1,
+        backgroundColor: '#f9f9f9',
+        borderRadius: 20,
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+        marginRight: 10,
+        maxHeight: 100,
+    },
+    sendButton: {
+        backgroundColor: '#007AFF',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+});

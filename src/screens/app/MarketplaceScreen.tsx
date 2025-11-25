@@ -357,8 +357,8 @@ export default function MarketplaceScreen() {
                     <TouchableOpacity
                       onPress={() => setSelectedMyItem({ ...item, extraCash: 0 })}
                       className={`mb-4 w-[48%] overflow-hidden rounded-xl border-2 ${selectedMyItem?.id === item.id
-                          ? 'border-blue-600'
-                          : 'border-gray-200'
+                        ? 'border-blue-600'
+                        : 'border-gray-200'
                         }`}
                     >
                       <Image

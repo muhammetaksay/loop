@@ -106,6 +106,18 @@ export const createTradeOffer = async (
     offer: Omit<TradeOffer, 'id' | 'createdAt' | 'status'>
 ): Promise<string> => {
     try {
+        // Check for duplicate offer
+        const q = query(
+            collection(db, 'tradeOffers'),
+            where('listingId', '==', offer.listingId),
+            where('fromUserId', '==', offer.fromUserId),
+            where('status', '==', 'pending') // Only check pending offers
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+            throw new Error('Bu ürüne zaten bekleyen bir teklifiniz var.');
+        }
+
         console.log('Creating trade offer with data:', JSON.stringify(offer, null, 2));
         const docRef = await addDoc(collection(db, 'tradeOffers'), {
             ...offer,
@@ -191,11 +203,42 @@ export const getOutgoingOffers = async (userId: string): Promise<TradeOffer[]> =
  */
 export const updateTradeOfferStatus = async (
     offerId: string,
-    status: 'accepted' | 'rejected'
+    status: 'accepted' | 'rejected',
+    listingId?: string, // Required for acceptance
+    otherUserId?: string, // Required for chat creation
+    otherUserName?: string, // Required for chat creation
+    otherUserAvatar?: string // Required for chat creation
 ): Promise<void> => {
     try {
         const docRef = doc(db, 'tradeOffers', offerId);
         await updateDoc(docRef, { status });
+
+        if (status === 'accepted' && listingId) {
+            // 1. Mark item as not tradeable (remove from marketplace)
+            const itemRef = doc(db, 'wardrobe', listingId);
+            await updateDoc(itemRef, { isTradeable: false });
+
+            // 2. Create chat between users
+            if (otherUserId && otherUserName) {
+                const { createChat } = require('./chatService'); // Lazy import to avoid circular dependency if any
+                await createChat(otherUserId, otherUserName, otherUserAvatar || '', listingId);
+            }
+
+            // 3. Reject all other pending offers for this item (Optional but recommended)
+            const q = query(
+                collection(db, 'tradeOffers'),
+                where('listingId', '==', listingId),
+                where('status', '==', 'pending'),
+                where('id', '!=', offerId) // Exclude current offer (though it's already accepted)
+            );
+
+            const pendingSnapshot = await getDocs(q);
+            pendingSnapshot.forEach(async (docSnap) => {
+                if (docSnap.id !== offerId) {
+                    await updateDoc(doc(db, 'tradeOffers', docSnap.id), { status: 'rejected' });
+                }
+            });
+        }
     } catch (error: any) {
         console.error('Update trade offer status error:', error);
         throw new Error(error.message);

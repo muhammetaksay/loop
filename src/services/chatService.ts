@@ -1,126 +1,127 @@
 import {
     collection,
-    doc,
     addDoc,
-    getDocs,
     query,
     where,
     orderBy,
     onSnapshot,
     Timestamp,
+    doc,
+    getDoc,
+    setDoc,
     updateDoc,
+    limit,
 } from 'firebase/firestore';
-import { db } from './firebaseService';
+import { db, auth } from './firebaseService';
 
 export interface Message {
     id: string;
-    conversationId: string;
-    senderId: string;
     text: string;
+    senderId: string;
+    senderName: string;
     createdAt: Date;
-    read: boolean;
 }
 
-export interface Conversation {
+export interface Chat {
     id: string;
-    participants: string[];
-    participantNames: { [userId: string]: string };
-    participantAvatars: { [userId: string]: string };
-    lastMessage: string;
-    lastMessageTime: Date;
-    unreadCount: { [userId: string]: number };
+    participants: string[]; // [userId1, userId2]
+    participantNames: { [userId: string]: string }; // { userId1: "Name1", userId2: "Name2" }
+    participantAvatars: { [userId: string]: string }; // { userId1: "url1", userId2: "url2" }
+    lastMessage?: string;
+    lastMessageTime?: Date;
+    listingId?: string; // Optional: link to a specific item trade
 }
 
 /**
- * Create or get conversation between two users
+ * Create or get existing chat between two users
  */
-export const getOrCreateConversation = async (
-    userId1: string,
-    userId2: string,
-    userName1: string,
-    userName2: string,
-    userAvatar1: string = '',
-    userAvatar2: string = ''
+export const createChat = async (
+    otherUserId: string,
+    otherUserName: string,
+    otherUserAvatar: string,
+    listingId?: string
 ): Promise<string> => {
     try {
-        // Check if conversation already exists
-        const q = query(
-            collection(db, 'conversations'),
-            where('participants', 'array-contains', userId1)
-        );
+        const currentUserId = auth.currentUser?.uid;
+        const currentUserName = auth.currentUser?.displayName || 'User';
+        // We don't have current user avatar easily available here without fetching profile, 
+        // but let's assume we can update it later or pass it in. 
+        // For now, let's use a placeholder or try to get it from auth if available (auth.currentUser.photoURL)
+        const currentUserAvatar = auth.currentUser?.photoURL || '';
 
-        const querySnapshot = await getDocs(q);
-        let conversationId: string | null = null;
+        if (!currentUserId) throw new Error('User not authenticated');
 
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data.participants.includes(userId2)) {
-                conversationId = doc.id;
-            }
-        });
+        // Check if chat already exists (simple check for direct DMs)
+        // For trade-specific chats, we might want to allow multiple if they are about different items,
+        // but usually one chat per pair is enough. Let's enforce one chat per pair for simplicity first.
 
-        // If conversation exists, return its ID
-        if (conversationId) {
-            return conversationId;
+        // Query for existing chat
+        // Firestore array-contains is limited to one value. 
+        // A common pattern is to store a combined ID "uid1_uid2" (sorted) to check existence.
+        const sortedIds = [currentUserId, otherUserId].sort();
+        const chatId = sortedIds.join('_');
+
+        const chatDocRef = doc(db, 'chats', chatId);
+        const chatDoc = await getDoc(chatDocRef);
+
+        if (chatDoc.exists()) {
+            return chatDoc.id;
         }
 
-        // Create new conversation
-        const docRef = await addDoc(collection(db, 'conversations'), {
-            participants: [userId1, userId2],
+        // Create new chat
+        const newChat: Chat = {
+            id: chatId,
+            participants: [currentUserId, otherUserId],
             participantNames: {
-                [userId1]: userName1,
-                [userId2]: userName2,
+                [currentUserId]: currentUserName,
+                [otherUserId]: otherUserName,
             },
             participantAvatars: {
-                [userId1]: userAvatar1,
-                [userId2]: userAvatar2,
+                [currentUserId]: currentUserAvatar,
+                [otherUserId]: otherUserAvatar,
             },
-            lastMessage: '',
-            lastMessageTime: Timestamp.now(),
-            unreadCount: {
-                [userId1]: 0,
-                [userId2]: 0,
-            },
+            createdAt: new Date(), // Add createdAt for sorting if needed
+            listingId: listingId || null,
+        } as any;
+
+        await setDoc(chatDocRef, {
+            ...newChat,
+            createdAt: Timestamp.now(),
         });
 
-        return docRef.id;
+        return chatId;
     } catch (error: any) {
-        console.error('Get or create conversation error:', error);
+        console.error('Create chat error:', error);
         throw new Error(error.message);
     }
 };
 
 /**
- * Send message
+ * Send a message
  */
-export const sendMessage = async (
-    conversationId: string,
-    senderId: string,
-    receiverId: string,
-    text: string
-): Promise<void> => {
+export const sendMessage = async (chatId: string, text: string): Promise<void> => {
     try {
-        // Add message to messages collection
-        await addDoc(collection(db, 'messages'), {
-            conversationId,
-            senderId,
+        const currentUserId = auth.currentUser?.uid;
+        const currentUserName = auth.currentUser?.displayName || 'User';
+
+        if (!currentUserId) throw new Error('User not authenticated');
+
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+
+        await addDoc(messagesRef, {
             text,
+            senderId: currentUserId,
+            senderName: currentUserName,
             createdAt: Timestamp.now(),
-            read: false,
         });
 
-        // Update conversation
-        const conversationRef = doc(db, 'conversations', conversationId);
-        await updateDoc(conversationRef, {
+        // Update last message in chat doc
+        const chatRef = doc(db, 'chats', chatId);
+        await updateDoc(chatRef, {
             lastMessage: text,
             lastMessageTime: Timestamp.now(),
-            [`unreadCount.${receiverId}`]: (await getDocs(query(
-                collection(db, 'messages'),
-                where('conversationId', '==', conversationId),
-                where('senderId', '==', senderId),
-                where('read', '==', false)
-            ))).size + 1,
         });
+
     } catch (error: any) {
         console.error('Send message error:', error);
         throw new Error(error.message);
@@ -128,123 +129,55 @@ export const sendMessage = async (
 };
 
 /**
- * Get user's conversations
+ * Subscribe to user's chats
  */
-export const getUserConversations = async (userId: string): Promise<Conversation[]> => {
-    try {
-        const q = query(
-            collection(db, 'conversations'),
-            where('participants', 'array-contains', userId),
-            orderBy('lastMessageTime', 'desc')
-        );
-
-        const querySnapshot = await getDocs(q);
-        const conversations: Conversation[] = [];
-
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            conversations.push({
-                id: doc.id,
-                ...data,
-                lastMessageTime: data.lastMessageTime.toDate(),
-            } as Conversation);
-        });
-
-        return conversations;
-    } catch (error: any) {
-        console.error('Get user conversations error:', error);
-        throw new Error(error.message);
-    }
-};
-
-/**
- * Get messages for a conversation
- */
-export const getConversationMessages = async (
-    conversationId: string
-): Promise<Message[]> => {
-    try {
-        const q = query(
-            collection(db, 'messages'),
-            where('conversationId', '==', conversationId),
-            orderBy('createdAt', 'asc')
-        );
-
-        const querySnapshot = await getDocs(q);
-        const messages: Message[] = [];
-
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            messages.push({
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt.toDate(),
-            } as Message);
-        });
-
-        return messages;
-    } catch (error: any) {
-        console.error('Get conversation messages error:', error);
-        throw new Error(error.message);
-    }
-};
-
-/**
- * Subscribe to real-time messages
- */
-export const subscribeToMessages = (
-    conversationId: string,
-    callback: (messages: Message[]) => void
+export const subscribeToChats = (
+    userId: string,
+    onUpdate: (chats: Chat[]) => void
 ) => {
     const q = query(
-        collection(db, 'messages'),
-        where('conversationId', '==', conversationId),
-        orderBy('createdAt', 'asc')
+        collection(db, 'chats'),
+        where('participants', 'array-contains', userId),
+        orderBy('lastMessageTime', 'desc')
     );
 
-    return onSnapshot(q, (querySnapshot) => {
-        const messages: Message[] = [];
-        querySnapshot.forEach((doc) => {
+    return onSnapshot(q, (snapshot) => {
+        const chats: Chat[] = [];
+        snapshot.forEach((doc) => {
             const data = doc.data();
-            messages.push({
+            chats.push({
                 id: doc.id,
                 ...data,
-                createdAt: data.createdAt.toDate(),
-            } as Message);
+                lastMessageTime: data.lastMessageTime?.toDate(),
+            } as Chat);
         });
-        callback(messages);
+        onUpdate(chats);
     });
 };
 
 /**
- * Mark messages as read
+ * Subscribe to messages in a chat
  */
-export const markMessagesAsRead = async (
-    conversationId: string,
-    userId: string
-): Promise<void> => {
-    try {
-        const q = query(
-            collection(db, 'messages'),
-            where('conversationId', '==', conversationId),
-            where('senderId', '!=', userId),
-            where('read', '==', false)
-        );
+export const subscribeToMessages = (
+    chatId: string,
+    onUpdate: (messages: Message[]) => void
+) => {
+    const q = query(
+        collection(db, 'chats', chatId, 'messages'),
+        orderBy('createdAt', 'desc'),
+        limit(50)
+    );
 
-        const querySnapshot = await getDocs(q);
-        const updatePromises = querySnapshot.docs.map((doc) =>
-            updateDoc(doc.ref, { read: true })
-        );
-
-        await Promise.all(updatePromises);
-
-        // Reset unread count
-        const conversationRef = doc(db, 'conversations', conversationId);
-        await updateDoc(conversationRef, {
-            [`unreadCount.${userId}`]: 0,
+    return onSnapshot(q, (snapshot) => {
+        const messages: Message[] = [];
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            messages.push({
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt.toDate(),
+            } as Message);
         });
-    } catch (error: any) {
-        console.error('Mark messages as read error:', error);
-        throw new Error(error.message);
-    }
+        onUpdate(messages);
+    });
 };

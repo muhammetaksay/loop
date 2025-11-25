@@ -27,7 +27,14 @@ interface MarketplaceState {
     fetchListings: () => Promise<void>;
     fetchOffers: () => Promise<void>;
     makeOffer: (listing: MarketplaceListing, offeredItem: any) => Promise<void>;
-    respondToOffer: (offerId: string, accept: boolean) => Promise<void>;
+    respondToOffer: (
+        offerId: string,
+        accept: boolean,
+        listingId?: string,
+        otherUserId?: string,
+        otherUserName?: string,
+        otherUserAvatar?: string
+    ) => Promise<void>;
     toggleLike: (listingId: string) => void;
 }
 
@@ -141,9 +148,16 @@ export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
         }
     },
 
-    respondToOffer: async (offerId, accept) => {
+    respondToOffer: async (offerId, accept, listingId, otherUserId, otherUserName, otherUserAvatar) => {
         try {
-            await updateTradeOfferStatus(offerId, accept ? 'accepted' : 'rejected');
+            await updateTradeOfferStatus(
+                offerId,
+                accept ? 'accepted' : 'rejected',
+                listingId,
+                otherUserId,
+                otherUserName,
+                otherUserAvatar
+            );
 
             set((state) => ({
                 tradeOffers: state.tradeOffers.map((offer) =>

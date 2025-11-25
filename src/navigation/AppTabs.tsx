@@ -1,11 +1,12 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Home, Shirt, ShoppingBag, User } from 'lucide-react-native';
+import { Home, Shirt, ShoppingBag, User, MessageCircle } from 'lucide-react-native';
 import React from 'react';
 
 import HomeScreen from '../screens/app/HomeScreen';
 import MarketplaceScreen from '../screens/app/MarketplaceScreen';
 import ProfileScreen from '../screens/app/ProfileScreen';
 import WardrobeScreen from '../screens/app/WardrobeScreen';
+import ChatListScreen from '../screens/app/ChatListScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -36,6 +37,16 @@ export default function AppTabs() {
             <ShoppingBag color={color} size={size} />
           ),
           tabBarLabel: 'Takas',
+        }}
+      />
+      <Tab.Screen
+        name="ChatList"
+        component={ChatListScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <MessageCircle color={color} size={size} />
+          ),
+          tabBarLabel: 'Mesajlar',
         }}
       />
       <Tab.Screen
